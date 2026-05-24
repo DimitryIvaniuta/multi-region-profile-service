@@ -1,0 +1,94 @@
+spring:
+  application:
+    name: multi-region-profile-service
+  main:
+    web-application-type: reactive
+  r2dbc:
+    url: ${SPRING_R2DBC_URL:r2dbc:postgresql://localhost:5432/profiledb}
+    username: ${SPRING_R2DBC_USERNAME:profile}
+    password: ${SPRING_R2DBC_PASSWORD:profile}
+    pool:
+      enabled: true
+      initial-size: 5
+      max-size: 30
+      max-idle-time: 30m
+  flyway:
+    enabled: true
+    url: ${SPRING_FLYWAY_URL:jdbc:postgresql://localhost:5432/profiledb}
+    user: ${SPRING_FLYWAY_USER:profile}
+    password: ${SPRING_FLYWAY_PASSWORD:profile}
+    locations: classpath:db/migration
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      acks: all
+      retries: 10
+      properties:
+        enable.idempotence: true
+        max.in.flight.requests.per.connection: 5
+        delivery.timeout.ms: 120000
+        linger.ms: 10
+    consumer:
+      group-id: ${SPRING_KAFKA_CONSUMER_GROUP_ID:${APP_REGION_NAME:local}-profile-read-model}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      properties:
+        isolation.level: read_committed
+    listener:
+      ack-mode: record
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      timeout: 2s
+
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      region: ${APP_REGION_NAME:local}
+
+app:
+  region:
+    name: ${APP_REGION_NAME:local-primary}
+    role: ${APP_REGION_ROLE:PRIMARY}
+  consistency:
+    visibility-sla: ${APP_CONSISTENCY_VISIBILITY_SLA:5s}
+    cache-ttl: ${APP_CONSISTENCY_CACHE_TTL:60s}
+  kafka:
+    profile-changes-topic: ${APP_KAFKA_PROFILE_CHANGES_TOPIC:profile.changes.v1}
+    consumer-enabled: ${APP_KAFKA_CONSUMER_ENABLED:true}
+  outbox:
+    enabled: ${APP_OUTBOX_ENABLED:true}
+    batch-size: ${APP_OUTBOX_BATCH_SIZE:50}
+    max-attempts: ${APP_OUTBOX_MAX_ATTEMPTS:20}
+    fixed-delay-ms: ${APP_OUTBOX_FIXED_DELAY_MS:1000}
+    retry-backoff-base: ${APP_OUTBOX_RETRY_BACKOFF_BASE:1s}
+    retry-backoff-max: ${APP_OUTBOX_RETRY_BACKOFF_MAX:60s}
+    lock-timeout: ${APP_OUTBOX_LOCK_TIMEOUT:2m}
+  rate-limit:
+    enabled: ${APP_RATE_LIMIT_ENABLED:true}
+    window: ${APP_RATE_LIMIT_WINDOW:60s}
+    read-limit: ${APP_RATE_LIMIT_READ_LIMIT:1200}
+    write-limit: ${APP_RATE_LIMIT_WRITE_LIMIT:120}
+    internal-limit: ${APP_RATE_LIMIT_INTERNAL_LIMIT:300}
+  security:
+    api-key: ${APP_SECURITY_API_KEY:local-api-key}
+    internal-key: ${APP_SECURITY_INTERNAL_KEY:local-internal-key}
