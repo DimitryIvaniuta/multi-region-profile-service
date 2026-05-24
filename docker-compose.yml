@@ -1,0 +1,184 @@
+services:
+  kafka:
+    image: apache/kafka:4.1.0
+    container_name: profile-kafka
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: PLAINTEXT://kafka:29092,CONTROLLER://kafka:9093,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-topics.sh --bootstrap-server localhost:9092 --list >/dev/null 2>&1"]
+      interval: 10s
+      timeout: 10s
+      retries: 10
+
+  postgres-primary:
+    image: postgres:18-alpine
+    container_name: profile-postgres-primary
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_DB: profiledb
+      POSTGRES_USER: profile
+      POSTGRES_PASSWORD: profile
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profile -d profiledb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres-read-eu:
+    image: postgres:18-alpine
+    container_name: profile-postgres-read-eu
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_DB: profiledb
+      POSTGRES_USER: profile
+      POSTGRES_PASSWORD: profile
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profile -d profiledb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  postgres-read-us:
+    image: postgres:18-alpine
+    container_name: profile-postgres-read-us
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_DB: profiledb
+      POSTGRES_USER: profile
+      POSTGRES_PASSWORD: profile
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U profile -d profiledb"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis-eu:
+    image: redis:8-alpine
+    container_name: profile-redis-eu
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis-us:
+    image: redis:8-alpine
+    container_name: profile-redis-us
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  profile-primary:
+    build: .
+    container_name: profile-primary
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-primary:
+        condition: service_healthy
+      redis-eu:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      SERVER_PORT: 8080
+      APP_REGION_NAME: eu-central-1
+      APP_REGION_ROLE: PRIMARY
+      APP_KAFKA_CONSUMER_ENABLED: "true"
+      APP_OUTBOX_ENABLED: "true"
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres-primary:5432/profiledb
+      SPRING_R2DBC_USERNAME: profile
+      SPRING_R2DBC_PASSWORD: profile
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres-primary:5432/profiledb
+      SPRING_FLYWAY_USER: profile
+      SPRING_FLYWAY_PASSWORD: profile
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_KAFKA_CONSUMER_GROUP_ID: eu-central-1-profile-read-model
+      SPRING_DATA_REDIS_HOST: redis-eu
+      SPRING_DATA_REDIS_PORT: 6379
+      APP_SECURITY_API_KEY: local-api-key
+      APP_SECURITY_INTERNAL_KEY: local-internal-key
+
+  profile-read-eu:
+    build: .
+    container_name: profile-read-eu
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-read-eu:
+        condition: service_healthy
+      redis-eu:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+    environment:
+      SERVER_PORT: 8080
+      APP_REGION_NAME: eu-west-1
+      APP_REGION_ROLE: READ_REPLICA
+      APP_KAFKA_CONSUMER_ENABLED: "true"
+      APP_OUTBOX_ENABLED: "false"
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres-read-eu:5432/profiledb
+      SPRING_R2DBC_USERNAME: profile
+      SPRING_R2DBC_PASSWORD: profile
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres-read-eu:5432/profiledb
+      SPRING_FLYWAY_USER: profile
+      SPRING_FLYWAY_PASSWORD: profile
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_KAFKA_CONSUMER_GROUP_ID: eu-west-1-profile-read-model
+      SPRING_DATA_REDIS_HOST: redis-eu
+      SPRING_DATA_REDIS_PORT: 6379
+      APP_SECURITY_API_KEY: local-api-key
+      APP_SECURITY_INTERNAL_KEY: local-internal-key
+
+  profile-read-us:
+    build: .
+    container_name: profile-read-us
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres-read-us:
+        condition: service_healthy
+      redis-us:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+    environment:
+      SERVER_PORT: 8080
+      APP_REGION_NAME: us-east-1
+      APP_REGION_ROLE: READ_REPLICA
+      APP_KAFKA_CONSUMER_ENABLED: "true"
+      APP_OUTBOX_ENABLED: "false"
+      SPRING_R2DBC_URL: r2dbc:postgresql://postgres-read-us:5432/profiledb
+      SPRING_R2DBC_USERNAME: profile
+      SPRING_R2DBC_PASSWORD: profile
+      SPRING_FLYWAY_URL: jdbc:postgresql://postgres-read-us:5432/profiledb
+      SPRING_FLYWAY_USER: profile
+      SPRING_FLYWAY_PASSWORD: profile
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
+      SPRING_KAFKA_CONSUMER_GROUP_ID: us-east-1-profile-read-model
+      SPRING_DATA_REDIS_HOST: redis-us
+      SPRING_DATA_REDIS_PORT: 6379
+      APP_SECURITY_API_KEY: local-api-key
+      APP_SECURITY_INTERNAL_KEY: local-internal-key

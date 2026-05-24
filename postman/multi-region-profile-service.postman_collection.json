@@ -1,0 +1,300 @@
+{
+  "info": {
+    "name": "Multi-Region Profile Service",
+    "description": "Postman collection for primary writes, regional reads, consistency SLA and operations endpoints.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "primaryBaseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "euReadBaseUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "usReadBaseUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "apiKey",
+      "value": "local-api-key"
+    },
+    {
+      "key": "internalKey",
+      "value": "local-internal-key"
+    },
+    {
+      "key": "profileId",
+      "value": ""
+    },
+    {
+      "key": "expectedVersion",
+      "value": "1"
+    }
+  ],
+  "item": [
+    {
+      "name": "Create profile in primary region",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}"
+          }
+        ],
+        "url": "{{primaryBaseUrl}}/api/v1/profiles",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"email\": \"alice@example.com\",\n  \"displayName\": \"Alice Example\",\n  \"phone\": \"+48100100200\"\n}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('created', function () { pm.response.to.have.status(201); });",
+              "const json = pm.response.json();",
+              "pm.collectionVariables.set('profileId', json.profileId);"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Update profile in primary region",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}"
+          }
+        ],
+        "url": "{{primaryBaseUrl}}/api/v1/profiles/{{profileId}}",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"displayName\": \"Alice Updated\",\n  \"phone\": \"+48100100299\"\n}"
+        }
+      }
+    },
+    {
+      "name": "Read profile from EU read region",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}"
+          }
+        ],
+        "url": "{{euReadBaseUrl}}/api/v1/profiles/{{profileId}}"
+      }
+    },
+    {
+      "name": "Read profile from US read region",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}"
+          }
+        ],
+        "url": "{{usReadBaseUrl}}/api/v1/profiles/{{profileId}}"
+      }
+    },
+    {
+      "name": "Consistency SLA",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}"
+          }
+        ],
+        "url": "{{euReadBaseUrl}}/api/v1/consistency/sla"
+      }
+    },
+    {
+      "name": "Replication lag EU",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Internal-Key",
+            "value": "{{internalKey}}"
+          }
+        ],
+        "url": "{{euReadBaseUrl}}/internal/replication/lag"
+      }
+    },
+    {
+      "name": "Replay outbox primary",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Internal-Key",
+            "value": "{{internalKey}}"
+          }
+        ],
+        "url": "{{primaryBaseUrl}}/internal/outbox/replay?limit=100"
+      }
+    },
+    {
+      "name": "Deactivate profile in primary region",
+      "request": {
+        "method": "DELETE",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}"
+          }
+        ],
+        "url": "{{primaryBaseUrl}}/api/v1/profiles/{{profileId}}"
+      }
+    },
+    {
+      "name": "Read profile with minVersion guard",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-API-Key",
+            "value": "{{apiKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "url": {
+          "raw": "{{euReadBaseUrl}}/api/v1/profiles/{{profileId}}?minVersion={{expectedVersion}}",
+          "host": [
+            "{{euReadBaseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "profiles",
+            "{{profileId}}"
+          ],
+          "query": [
+            {
+              "key": "minVersion",
+              "value": "{{expectedVersion}}"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Projection watermarks EU",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Internal-Key",
+            "value": "{{internalKey}}"
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "url": {
+          "raw": "{{euReadBaseUrl}}/internal/projection/watermarks",
+          "host": [
+            "{{euReadBaseUrl}}"
+          ],
+          "path": [
+            "internal",
+            "projection",
+            "watermarks"
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Invalid projection events EU",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Internal-Key",
+            "value": "{{internalKey}}"
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "url": {
+          "raw": "{{euReadBaseUrl}}/internal/projection/invalid-events?limit=25",
+          "host": [
+            "{{euReadBaseUrl}}"
+          ],
+          "path": [
+            "internal",
+            "projection",
+            "invalid-events"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "25"
+            }
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "Outbox stats primary",
+      "request": {
+        "method": "GET",
+        "header": [
+          {
+            "key": "X-Internal-Key",
+            "value": "{{internalKey}}"
+          },
+          {
+            "key": "X-Correlation-Id",
+            "value": "{{$guid}}"
+          }
+        ],
+        "url": {
+          "raw": "{{primaryBaseUrl}}/internal/outbox/stats",
+          "host": [
+            "{{primaryBaseUrl}}"
+          ],
+          "path": [
+            "internal",
+            "outbox",
+            "stats"
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
